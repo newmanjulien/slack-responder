@@ -1,0 +1,37 @@
+{
+  "name": "slack-responder",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Responder Slack app",
+  "main": "dist/src/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "esbuild src/index.ts \"src/**/*.ts\" \"shared/**/*.ts\" --platform=node --format=esm --outdir=dist --outbase=. --sourcemap",
+    "build:verify": "node -e \"const fs=require('fs');const path=require('path');const must=['dist/src/index.js'];const missing=must.filter(p=>!fs.existsSync(path.resolve(p)));if(missing.length){console.error('Missing build outputs:', missing.join(', '));process.exit(1);}console.log('Build outputs present:', must.join(', '));\"",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit",
+    "prestart": "npm run build",
+    "start": "node dist/src/index.js",
+    "lint": "eslint . --ext .ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@slack/bolt": "^4.6.0",
+    "@slack/types": "^2.19.0",
+    "convex": "^1.31.2",
+    "dotenv": "^17.2.3",
+    "express": "^4.21.2",
+    "pino": "^9.3.1",
+    "zod": "^3.23.8",
+    "@slack/web-api": "^7.10.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^20.14.10",
+    "esbuild": "^0.27.0",
+    "eslint": "^9.9.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.2",
+    "vitest": "^2.1.8"
+  }
+}
