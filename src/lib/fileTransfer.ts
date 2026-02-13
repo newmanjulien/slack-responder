@@ -68,10 +68,11 @@ export const transferSlackFile = async (payload: {
     },
   );
 
-  if (!fileInfo.url || !fileInfo.size) {
+  if (!fileInfo.url || typeof fileInfo.size !== "number") {
     throw new Error("missing_file_metadata");
   }
-  if (fileInfo.size > MAX_RELAY_FILE_BYTES) {
+  const fileSize = fileInfo.size;
+  if (fileSize > MAX_RELAY_FILE_BYTES) {
     throw new Error("file_too_large");
   }
 
@@ -104,7 +105,7 @@ export const transferSlackFile = async (payload: {
     () =>
       destinationClient.files.getUploadURLExternal({
         filename: fileInfo.name,
-        length: fileInfo.size,
+        length: fileSize,
       }),
     {
       attempts: 3,
@@ -126,11 +127,11 @@ export const transferSlackFile = async (payload: {
     method: "POST",
     headers: {
       "content-type": fileInfo.mimetype,
-      "content-length": String(fileInfo.size),
+      "content-length": String(fileSize),
     },
     duplex: "half",
     body: download.body,
-  });
+  } as RequestInit);
   if (!uploadResponse.ok) {
     throw new Error(`upload_failed:${uploadResponse.status}`);
   }
