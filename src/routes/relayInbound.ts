@@ -6,6 +6,9 @@ import { logger } from "../lib/logger.js";
 import { getChannelByTeamUser, setChannelForTeamUser } from "../data/relay.js";
 import { retryWithBackoff, sleep } from "../lib/retry.js";
 import { getRateLimiter } from "../lib/rateLimit.js";
+import { transferSlackFile } from "../lib/fileTransfer.js";
+import { getUserAppBotToken } from "../data/relay.js";
+import { SOURCE_WORKSPACE_USER_APP } from "../../shared/relay/types.js";
 
 const sanitizeChannelName = (value: string) =>
   value
@@ -28,13 +31,36 @@ const buildChannelName = (teamId: string, userId: string) => {
 
 const ensureChannel = async (client: WebClient, teamId: string, userId: string) => {
   const existing = await getChannelByTeamUser(teamId, userId);
-  if (existing?.channelId) return existing.channelId;
+  if (existing?.channelId) {
+    try {
+      await client.conversations.join({ channel: existing.channelId });
+    } catch (error) {
+      const auth = await client.auth.test();
+      const botUserId = auth.user_id;
+      if (botUserId) {
+        await client.conversations.invite({ channel: existing.channelId, users: botUserId });
+      }
+    }
+    return existing.channelId;
+  }
 
   const name = buildChannelName(teamId, userId);
   const create = await client.conversations.create({ name });
   const channelId = create.channel?.id;
   if (!channelId) {
     throw new Error("channel_create_failed");
+  }
+
+  try {
+    await client.conversations.join({ channel: channelId });
+  } catch (error) {
+    const auth = await client.auth.test();
+    const botUserId = auth.user_id;
+    if (botUserId) {
+      await client.conversations.invite({ channel: channelId, users: botUserId });
+    } else {
+      throw error;
+    }
   }
 
   await client.conversations.setTopic({
@@ -67,68 +93,29 @@ const getSlackRetryAfterMs = (error: unknown) => {
   return null;
 };
 
-const uploadFiles = async (client: WebClient, channel: string, files: Array<{ proxyUrl?: string; filename?: string; mimeType?: string; size: number; expiresAt?: number; }>) => {
+const uploadFiles = async (
+  destinationToken: string,
+  channel: string,
+  files: Array<{ sourceFileId?: string; sourceWorkspace?: string }>,
+  teamId: string,
+  secret: string,
+) => {
+  if (files.length === 0) return;
+  const tokenResult = await getUserAppBotToken(teamId, secret);
+  if (!tokenResult?.ok) {
+    throw new Error("missing_userapp_token");
+  }
   for (const file of files) {
-    if (typeof file.expiresAt === "number" && Date.now() > file.expiresAt) {
-      throw new Error("proxy_expired");
+    if (!file.sourceFileId) throw new Error("missing_source_file");
+    if (file.sourceWorkspace !== SOURCE_WORKSPACE_USER_APP) {
+      throw new Error("unexpected_source_workspace");
     }
-    if (!file.proxyUrl) throw new Error("missing_proxy");
-    if (!file.size) throw new Error("missing_size");
-
-    const download = await fetch(file.proxyUrl);
-    if (!download.ok || !download.body) {
-      throw new Error(`proxy_fetch_failed:${download.status}`);
-    }
-
-    const uploadInfo = await retryWithBackoff(
-      () =>
-        client.files.getUploadURLExternal({
-          filename: file.filename || "file",
-          length: file.size,
-        }),
-      {
-        attempts: 3,
-        baseDelayMs: 500,
-        maxDelayMs: 4000,
-        jitter: 0.2,
-        isRetryable: isSlackRetryable,
-        getRetryAfterMs: getSlackRetryAfterMs,
-      },
-    );
-
-    const uploadUrl = uploadInfo.upload_url as string | undefined;
-    const fileId = uploadInfo.file_id as string | undefined;
-    if (!uploadUrl || !fileId) throw new Error("missing_upload_url");
-
-    const uploadResponse = await fetch(uploadUrl, {
-      method: "POST",
-      headers: {
-        "content-type": file.mimeType || "application/octet-stream",
-        "content-length": String(file.size),
-      },
-      duplex: "half",
-      body: download.body,
+    await transferSlackFile({
+      sourceToken: tokenResult.token,
+      destinationToken,
+      sourceFileId: file.sourceFileId,
+      destinationChannelId: channel,
     });
-
-    if (!uploadResponse.ok) {
-      throw new Error(`upload_failed:${uploadResponse.status}`);
-    }
-
-    await retryWithBackoff(
-      () =>
-        client.files.completeUploadExternal({
-          files: [{ id: fileId, title: file.filename || "file" }],
-          channel_id: channel,
-        }),
-      {
-        attempts: 3,
-        baseDelayMs: 500,
-        maxDelayMs: 4000,
-        jitter: 0.2,
-        isRetryable: isSlackRetryable,
-        getRetryAfterMs: getSlackRetryAfterMs,
-      },
-    );
   }
 };
 
@@ -149,13 +136,14 @@ export const registerRelayInboundRoutes = (payload: {
       }
 
       const body = req.body || {};
+      const relayKey = body.relayKey;
       const teamId = body.teamId;
       const userId = body.userId;
       const text = typeof body.text === "string" ? body.text : "";
       const files = Array.isArray(body.files) ? body.files : [];
 
-      if (!teamId || !userId) {
-        return res.status(400).json({ ok: false, error: "missing_team_or_user" });
+      if (!relayKey || !teamId || !userId) {
+        return res.status(400).json({ ok: false, error: "missing_required_fields" });
       }
 
       const client = new SlackWebClient(SLACK_BOT_TOKEN);
@@ -195,7 +183,7 @@ export const registerRelayInboundRoutes = (payload: {
       }
 
       if (files.length > 0) {
-        await uploadFiles(client, channelId, files);
+        await uploadFiles(SLACK_BOT_TOKEN, channelId, files, teamId, RELAY_WEBHOOK_SECRET);
       }
 
       return res.json({ ok: true });

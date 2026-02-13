@@ -3,9 +3,7 @@ import type { GenericMessageEvent } from "@slack/types";
 import { WebClient } from "@slack/web-api";
 import { logger } from "../../lib/logger.js";
 import { enqueueOutbound, dispatchOutbound } from "../../data/relay.js";
-import { getConfig } from "../../lib/config.js";
-import { buildRelayFileProxyUrl } from "../../../shared/relay/contract.js";
-import { createRelayFileToken } from "../../data/relayTokens.js";
+import { buildRelayKey, SOURCE_WORKSPACE_RESPONDER } from "../../../shared/relay/types.js";
 
 type MessageArgs = SlackEventMiddlewareArgs<"message"> & AllMiddlewareArgs;
 
@@ -76,50 +74,33 @@ export const registerChannelMessageHandler = (app: App) => {
       const userText = typeof message.text === "string" ? message.text.trim() : "";
       const files = Array.isArray(message.files) ? message.files : [];
 
-      const { APP_BASE_URL, RELAY_WEBHOOK_SECRET } = getConfig();
-      const expiresAt = Date.now() + 15 * 60 * 1000;
-
       const outboundFiles = await Promise.all(
         files.map(async (file) => {
-          if (!file || typeof file.id !== "string" || typeof file.size !== "number") return null;
-          const tokenResult = await createRelayFileToken({
-            teamId: routing.teamId,
-            fileId: file.id,
-            expiresAt,
-          });
-          const token = tokenResult?.token;
-          if (!token) return null;
+          if (!file || typeof file.id !== "string") return null;
           const filename = typeof file.name === "string" ? file.name : undefined;
           const mimeType = typeof file.mimetype === "string" ? file.mimetype : undefined;
-          const size = typeof file.size === "number" ? file.size : undefined;
-          if (!size) return null;
           return {
             filename,
             mimeType,
-            size,
-            expiresAt,
-            proxyUrl: buildRelayFileProxyUrl(
-              {
-                teamId: routing.teamId,
-                fileId: file.id,
-                expiresAt,
-                filename,
-                mimeType,
-                size,
-                token,
-              },
-              RELAY_WEBHOOK_SECRET,
-              APP_BASE_URL,
-            ),
+            size: typeof file.size === "number" ? file.size : undefined,
+            sourceFileId: file.id,
+            sourceWorkspace: SOURCE_WORKSPACE_RESPONDER,
           };
         }),
       );
 
       const filteredFiles = outboundFiles.filter(
-        (file): file is NonNullable<typeof file> => Boolean(file && file.size > 0),
+        (file): file is NonNullable<typeof file> => Boolean(file && file.sourceFileId),
       );
 
+      const relayKey = buildRelayKey([
+        routing.teamId,
+        routing.userId,
+        body?.event_id || message.ts,
+      ]);
+
       const enqueueResult = await enqueueOutbound({
+        relayKey,
         teamId: routing.teamId,
         userId: routing.userId,
         text: userText || undefined,
@@ -128,6 +109,7 @@ export const registerChannelMessageHandler = (app: App) => {
       });
 
       await dispatchOutbound({
+        relayKey,
         teamId: routing.teamId,
         userId: routing.userId,
         text: userText || undefined,

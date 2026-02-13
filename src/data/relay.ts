@@ -3,7 +3,7 @@ import { api } from "../../shared/convex-api/api.js";
 
 export const getChannelByTeamUser = async (teamId: string, userId: string) => {
   const client = getConvexClient();
-  return client.query(api.responder.relayChannels.getChannelByTeamUser, { teamId, userId });
+  return client.query(api.relay.channels.getChannelByTeamUser, { teamId, userId });
 };
 
 export const setChannelForTeamUser = async (payload: {
@@ -13,39 +13,54 @@ export const setChannelForTeamUser = async (payload: {
   channelName?: string;
 }) => {
   const client = getConvexClient();
-  return client.mutation(api.responder.relayChannels.setChannelForTeamUser, payload);
+  return client.mutation(api.relay.channels.setChannelForTeamUser, payload);
 };
 
 export const enqueueOutbound = async (payload: {
+  relayKey: string;
   teamId: string;
   userId: string;
   text?: string;
   files?: Array<{
     filename?: string;
     mimeType?: string;
-    size: number;
-    proxyUrl?: string;
-    expiresAt?: number;
+    size?: number;
+    sourceFileId?: string;
+    sourceWorkspace?: string;
   }>;
   externalId?: string;
 }) => {
   const client = getConvexClient();
-  return client.mutation(api.responder.relay.enqueueOutbound, payload);
+  return client.mutation(api.relay.messages.enqueueRelay, {
+    relayKey: payload.relayKey,
+    direction: "outbound",
+    teamId: payload.teamId,
+    userId: payload.userId,
+    text: payload.text,
+    files: payload.files,
+    externalId: payload.externalId,
+  });
 };
 
 export const dispatchOutbound = async (payload: {
+  relayKey: string;
   teamId: string;
   userId: string;
   text?: string;
   files?: Array<{
     filename?: string;
     mimeType?: string;
-    size: number;
-    proxyUrl?: string;
-    expiresAt?: number;
+    size?: number;
+    sourceFileId?: string;
+    sourceWorkspace?: string;
   }>;
   messageId?: string;
 }) => {
   const client = getConvexClient();
-  return client.action(api.responder.dispatch.dispatchOutbound, payload);
+  return client.action(api.relay.dispatch.dispatchOutbound, payload);
+};
+
+export const getUserAppBotToken = async (teamId: string, secret: string) => {
+  const client = getConvexClient();
+  return client.query(api.relay.installations.getUserAppBotToken, { teamId, secret });
 };
