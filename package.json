@@ -16,7 +16,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@newmanjulien/overbase-contracts": "^0.0.1",
+    "@newmanjulien/overbase-contracts": "^0.0.2",
     "@slack/bolt": "^4.6.0",
     "@slack/types": "^2.19.0",
     "convex": "^1.31.2",
