@@ -117,13 +117,17 @@ const uploadFiles = async (
   if (!tokenResult?.ok) {
     throw new Error("missing_userapp_token");
   }
+  const sourceToken = tokenResult.token;
+  if (!sourceToken) {
+    throw new Error("missing_userapp_token");
+  }
   for (const file of files) {
     if (!file.sourceFileId) throw new Error("missing_source_file");
     if (file.sourceWorkspace !== SOURCE_WORKSPACE_USER_APP) {
       throw new Error("unexpected_source_workspace");
     }
     await transferSlackFile({
-      sourceToken: tokenResult.token,
+      sourceToken,
       destinationToken,
       sourceFileId: file.sourceFileId,
       destinationChannelId: channel,

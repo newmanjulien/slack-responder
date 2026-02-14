@@ -108,13 +108,16 @@ export const registerChannelMessageHandler = (app: App) => {
         externalId: body?.event_id || message.ts,
       });
 
+      const messageId =
+        enqueueResult && "id" in enqueueResult ? (enqueueResult.id as string | undefined) : undefined;
+
       await dispatchOutbound({
         relayKey,
         teamId: routing.teamId,
         userId: routing.userId,
         text: userText || undefined,
         files: filteredFiles.length > 0 ? filteredFiles : undefined,
-        messageId: enqueueResult?.id as string | undefined,
+        messageId,
       });
     } catch (error) {
       logger.error({ error }, "Responder message handling failed");
