@@ -7,7 +7,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "esbuild src/index.ts \"src/**/*.ts\" \"shared/**/*.ts\" --platform=node --format=esm --outdir=dist --outbase=. --sourcemap",
+    "build": "esbuild src/index.ts \"src/**/*.ts\" --platform=node --format=esm --outdir=dist --outbase=. --sourcemap",
     "build:verify": "node -e \"const fs=require('fs');const path=require('path');const must=['dist/src/index.js'];const missing=must.filter(p=>!fs.existsSync(path.resolve(p)));if(missing.length){console.error('Missing build outputs:', missing.join(', '));process.exit(1);}console.log('Build outputs present:', must.join(', '));\"",
     "typecheck": "tsc -p tsconfig.app.json --noEmit",
     "prestart": "npm run build",
@@ -16,6 +16,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@newmanjulien/overbase-contracts": "^0.0.2",
     "@slack/bolt": "^4.6.0",
     "@slack/types": "^2.19.0",
     "convex": "^1.31.2",

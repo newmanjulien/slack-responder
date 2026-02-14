@@ -3,7 +3,6 @@ import type { Request, Response } from "express";
 import { getConfig } from "../lib/config.js";
 import { logger } from "../lib/logger.js";
 import { registerRelayInboundRoutes } from "../routes/relayInbound.js";
-import { registerRelayFileRoutes } from "../routes/relayFile.js";
 import { registerChannelMessageHandler } from "../handlers/messages/channelMessage.js";
 
 const require = createRequire(import.meta.url);
@@ -20,7 +19,6 @@ export const createBoltApp = () => {
   });
 
   registerRelayInboundRoutes({ receiver });
-  registerRelayFileRoutes({ receiver });
 
   const app = new App({
     receiver,
