@@ -3,7 +3,7 @@ import type { GenericMessageEvent } from "@slack/types";
 import { WebClient } from "@slack/web-api";
 import { logger } from "../../lib/logger.js";
 import { enqueueOutbound, dispatchOutbound } from "../../data/relay.js";
-import { buildRelayKey, SOURCE_WORKSPACE_RESPONDER } from "../../../shared/relay/types.js";
+import { buildRelayKey, SOURCE_WORKSPACE_RESPONDER } from "@newmanjulien/overbase-contracts";
 
 type MessageArgs = SlackEventMiddlewareArgs<"message"> & AllMiddlewareArgs;
 

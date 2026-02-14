@@ -1,5 +1,5 @@
 import { getConvexClient } from "../lib/convexClient.js";
-import { api } from "../../shared/convex-api/api.js";
+import { api } from "@newmanjulien/overbase-contracts";
 
 export const getChannelByTeamUser = async (teamId: string, userId: string) => {
   const client = getConvexClient();

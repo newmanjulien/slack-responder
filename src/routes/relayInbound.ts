@@ -8,7 +8,7 @@ import { retryWithBackoff, sleep } from "../lib/retry.js";
 import { getRateLimiter } from "../lib/rateLimit.js";
 import { transferSlackFile } from "../lib/fileTransfer.js";
 import { getUserAppBotToken } from "../data/relay.js";
-import { SOURCE_WORKSPACE_USER_APP } from "../../shared/relay/types.js";
+import { SOURCE_WORKSPACE_USER_APP } from "@newmanjulien/overbase-contracts";
 
 const sanitizeChannelName = (value: string) =>
   value
@@ -29,39 +29,51 @@ const buildChannelName = (teamId: string, userId: string) => {
   return `${base}-${hashSuffix(`${teamId}:${userId}`)}`;
 };
 
+const findChannelByName = async (client: WebClient, name: string) => {
+  let cursor: string | undefined;
+  do {
+    const result = await client.conversations.list({
+      limit: 1000,
+      cursor,
+      types: "public_channel,private_channel",
+    });
+    const channels = (result.channels || []) as Array<{ id?: string; name?: string }>;
+    const match = channels.find((channel) => channel.name === name);
+    if (match?.id) return match.id;
+    cursor = result.response_metadata?.next_cursor || undefined;
+  } while (cursor);
+  return null;
+};
+
 const ensureChannel = async (client: WebClient, teamId: string, userId: string) => {
   const existing = await getChannelByTeamUser(teamId, userId);
   if (existing?.channelId) {
     try {
       await client.conversations.join({ channel: existing.channelId });
-    } catch (error) {
-      const auth = await client.auth.test();
-      const botUserId = auth.user_id;
-      if (botUserId) {
-        await client.conversations.invite({ channel: existing.channelId, users: botUserId });
-      }
+    } catch {
+      // Ignore join failures for private channels; the bot may already be a member.
     }
     return existing.channelId;
   }
 
   const name = buildChannelName(teamId, userId);
-  const create = await client.conversations.create({ name });
-  const channelId = create.channel?.id;
-  if (!channelId) {
-    throw new Error("channel_create_failed");
-  }
-
+  let channelId: string | null = null;
   try {
-    await client.conversations.join({ channel: channelId });
+    const create = await client.conversations.create({ name });
+    channelId = create.channel?.id || null;
   } catch (error) {
-    const auth = await client.auth.test();
-    const botUserId = auth.user_id;
-    if (botUserId) {
-      await client.conversations.invite({ channel: channelId, users: botUserId });
+    const err = error as { data?: { error?: string } };
+    if (err?.data?.error === "name_taken") {
+      channelId = await findChannelByName(client, name);
     } else {
       throw error;
     }
   }
+  if (!channelId) {
+    throw new Error("channel_create_failed");
+  }
+
+  // Bot should already be a member of channels it creates.
 
   await client.conversations.setTopic({
     channel: channelId,
